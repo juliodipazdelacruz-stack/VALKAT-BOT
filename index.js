@@ -105,6 +105,7 @@ bot.on('photo', async (ctx) => {
       2. PRECISIÓN EN DÍGITOS (6 vs 8): En los tickets térmicos, los números "6" y "8" pueden parecerse por la borrosidad de la tinta. Analiza la estructura del carácter: si el círculo superior o inferior está abierto, es un 6; si está completamente sellado en ambos lados, es un 8. Evita confundir el 6 con el 8.
       3. PEGADOS COMUNES: Si el número de orden y la palabra "CÓDIGO" están juntos (ej: "100070441CÓDIGO"), sepáralos correctamente e ignora la C
       4. NOMBRES COMPLETOS: Extrae el nombre del remitente y del destinatario completos, sin recortar letras al final de las líneas.`;
+      
       const chatCompletion = await groq.chat.completions.create({
         messages: [
           {
@@ -148,35 +149,11 @@ bot.on('photo', async (ctx) => {
   }).catch((err) => console.error('[ERROR EN COLA]:', err));
 });
 
-async function procesarPedidosPendientes() {
-  console.log('--- Iniciando chequeo programado de pedidos ---');
-  
-  db.all(`SELECT * FROM pedidos WHERE estado != 'En destino'`, async (err, pedidos) => {
-    if (err) return console.error(err);
-
-    for (const pedido of pedidos) {
-      console.log(`Verificando orden: ${pedido.numero_orden}`);
-      const nuevoEstado = await rastrearPedidoShalom(pedido.numero_orden, pedido.codigo_orden);
-
-      if (nuevoEstado && nuevoEstado !== pedido.estado) {
-        db.run(`UPDATE pedidos SET estado = ? WHERE id = ?`, [nuevoEstado, pedido.id]);
-
-        if (nuevoEstado === 'En destino') {
-          const mensajeLlegada = `📦 *¡Tu paquete ya está en agencia SHALOM!*\n\nHola *${pedido.destinatario}*, te informamos que tu producto está listo para ser retirado.\n\n📋 *Datos de tu envío:*\n▫️ *Nro. Orden:* ${pedido.numero_orden}\n▫️ *Código:* ${pedido.codigo_orden}\n\n⚠️ *IMPORTANTE:* Para poder brindarte la clave de retiro, es necesario realizar el abono del saldo pendiente.\n_(Verificamos pagos de 8:00 AM a 6:00 PM. Fuera de este horario, se procesan al día siguiente)._\n\n⏳ Recuerda que tienes un plazo máximo de *2 días* para recogerlo. Pasado este tiempo, el producto retornará al almacén sin opción a reembolso.\n\n📍 *Rastrea tu pedido aquí:* https://rastrea.shalom.pe\n\n🙌🏼 ¡Gracias por confiar en nosotros!\n*(Si ya realizaste el pago, puedes omitir este mensaje).*`;
-
-          bot.telegram.sendMessage(pedido.chat_id, mensajeLlegada, { parse_mode: 'Markdown' });
-        }
-      }
-      await new Promise(r => setTimeout(r, 3000));
-    }
-  });
-}
-
 // Horario 1: Todos los días a las 10:30 AM
-cron.schedule('30 10 * * *', procesarPedidosPendientes);
+cron.schedule('30 10 * * *', chequearPedidosPendientes);
 
 // Horario 2: Todos los días a las 3:00 PM (15:00)
-cron.schedule('0 15 * * *', procesarPedidosPendientes);
+cron.schedule('0 15 * * *', chequearPedidosPendientes);
 
 // 3. Inicialización
 bot.launch().then(() => {
